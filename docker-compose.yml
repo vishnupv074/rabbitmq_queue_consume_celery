@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # mongo:
+  #   image: "mongo"
+  #   container_name: mongo
+  #   ports:
+  #     - "27017:27017"
+
+  worker:
+    build: .
+    # container_name: celery_worker
+    # depends_on:
+    #   - rabbitmq
+    #   # - mongo
+    env_file:
+      - .env
+    command: celery -A celery_app worker --loglevel=info --queues=celery
+    restart: always
+    deploy:
+      replicas: 1
+    depends_on:
+      # mongo
+      rabbitmq:
+        condition: service_healthy
+
+  dlq_consumer:
+    build: .
+    container_name: dlq_consumer
+    env_file:
+      - .env
+    command: python dlq_consumer.py
+    restart: always
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+  
+  consumer:
+    build: .
+    container_name: consumer
+    deploy:
+      replicas: 1
+    env_file:
+      - .env
+    command: python main_consumer.py
+    restart: always
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
